@@ -3,7 +3,7 @@
 
 ## Rationale:
 This module attemps to ensure connectivity on networks which have
-stability problems on traffic routing (link layer).
+stability problems on its wifi. Run on Ubuntu / Debian.
 
 ## Requirements
 You need network manager.

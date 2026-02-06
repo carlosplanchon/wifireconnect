@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "wifireconnect"
 version = "0.2.0"
-description = "Python module to test and ensure connectivity on a network which have stability problems on traffic routing (link layer)."
+description = "Python module to test and ensure connectivity on a network which have stability problems on its wifi. Run on Ubuntu / Debian."
 readme = "README.md"
 authors = [
     {name = "Carlos A. Planchón", email = "bubbledoloresuruguay2@gmail.com"}
