@@ -15,7 +15,7 @@ setup(
         ]
     },
     version="0.1.1",
-    license="GPL3",
+    license="MIT",
     description="Python3 module to test and ensure connectivity "
     "on a network which have stability problems on"
     " traffic routing (link layer).",
