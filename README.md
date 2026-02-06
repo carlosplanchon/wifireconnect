@@ -1,5 +1,5 @@
 # wifireconnect
-*Python3 module to test and ensure connectivity on a network.*
+*Python module to test and ensure connectivity on a network.*
 
 ## Rationale:
 This module attemps to ensure connectivity on networks which have
@@ -10,16 +10,16 @@ You need network manager.
 (sudo apt install network-manager)
 
 ## Installation
-### Install with pip
-```
-pip3 install --user -U wifireconnect
+### Install with uv:
+```bash
+uv add wifireconnect
 ```
 
 ## Usage
 From shell:
 
 ```
-$ python3.7 wifireconnect -h
+$ python wifireconnect -h
 usage: wifireconnect.py [-h] [-v] [-t TARGET] [-s SLEEP_BETWEEN] [-c COUNT]
                    [-e ESSID] [-p PASSWORD]
 
