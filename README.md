@@ -19,28 +19,20 @@ uv add wifireconnect
 From shell:
 
 ```
-$ python wifireconnect -h
-usage: wifireconnect.py [-h] [-v] [-t TARGET] [-s SLEEP_BETWEEN] [-c COUNT]
-                   [-e ESSID] [-p PASSWORD]
+$ wifireconnect --help
+Usage: wifireconnect [OPTIONS]
 
-Run a connectivity test on a network connection(using ping) every a 's' time
-and try to reconnect if that test fail.
-(See your networks with 'nmcli conn')
+Run a connectivity test on a network connection (using ping) every 's' seconds
+and try to reconnect if that test fails. (See your networks with 'nmcli conn')
 
-optional arguments:
-  -h, --help            show this help message and exit
-  -v, --verbose         Verbosity.
-  -t TARGET, --target TARGET
-                        Target webpage. Default httpbin.com.
-  -s SLEEP_BETWEEN, --sleep SLEEP_BETWEEN
-                        Time between connectivity tests. Default: 10
-  -c COUNT, --count COUNT
-                        Num of attemps to ping target on the connectivity
-                        test. Default: 2
-  -e ESSID, --essid ESSID
-                        AP's ESSID.
-  -p PASSWORD, --password PASSWORD
-                        AP's password.
+Options:
+  -e, --essid TEXT        AP's ESSID.  [required]
+  -p, --password TEXT     AP's password.
+  -t, --target TEXT       Target webpage for connectivity test.  [default: httpbin.com]
+  -s, --sleep INTEGER     Time between connectivity tests in seconds.  [default: 10]
+  -c, --count INTEGER     Number of attempts to ping target on the connectivity test.  [default: 2]
+  -v, --verbose          Enable verbose output.
+  --help                 Show this message and exit.
 ```
 
 From the interpreter:

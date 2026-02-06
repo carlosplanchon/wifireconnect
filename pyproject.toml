@@ -26,7 +26,8 @@ classifiers = [
 ]
 requires-python = ">=3.9"
 dependencies = [
-    "pingparsing"
+    "pingparsing",
+    "typer"
 ]
 
 [project.urls]
