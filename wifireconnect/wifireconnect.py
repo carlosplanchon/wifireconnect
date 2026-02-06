@@ -6,7 +6,7 @@ from subprocess import run, DEVNULL, PIPE
 from pingparsing import PingParsing
 from pingparsing import PingTransmitter
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 DEFAULT_TARGET = "httpbin.com"
 DEFAULT_SLEEP_BETWEEN = 10
@@ -29,7 +29,7 @@ def print_verbose(string: str, verbose: bool = True):
 def test_connection_by_ping(
     page: str = DEFAULT_TARGET,
     count: int = DEFAULT_TEST_COUNT,
-        ) -> Dict[Any, Any]:
+        ) -> dict[Any, Any]:
     """
     Ping the desired host and return the results.
     :param page: str: Page to target on the test.
@@ -47,12 +47,12 @@ def test_connection_by_ping(
     return ping_parser.parse(result).as_dict()
 
 
-def connect_to_wifi(essid: str, password: Optional[str]) -> bool:
+def connect_to_wifi(essid: str, password: str | None) -> bool:
     """
     It tries to connect to an AP using nmcli.
 
     :param essid: str: AP's ESSID.
-    :param password: Optional[str]: AP's password.
+    :param password[str]: AP's password.
 
     """
     if essid and password:
@@ -84,7 +84,7 @@ def connect_to_wifi(essid: str, password: Optional[str]) -> bool:
 
 def loop_test_and_reconnect(
     essid: str,
-    password: Optional[str] = None,
+    password: str | None = None,
     sleep_between: int = DEFAULT_SLEEP_BETWEEN,
     test_target: str = DEFAULT_TARGET,
     verbose: bool = False,
@@ -94,7 +94,7 @@ def loop_test_and_reconnect(
     Run a connectivity test and try to reconnect if test failed.
 
     :param essid: str: AP's ESSID.
-    :param password: Optional[str]: AP's password (Default value = None)
+    :param password: str | None: AP's password (Default value = None)
     :param sleep_between: int: Time between connectivity tests.
         (Default value = DEFAULT_SLEEP_BETWEEN)
     :param test_target: str: Page used to do the connectivity test.
@@ -107,7 +107,7 @@ def loop_test_and_reconnect(
     """
     while True:
         try:
-            connection_test_result = test_connection_by_ping(
+            test_connection_by_ping(
                 page=test_target,
                 count=test_count
                 )
