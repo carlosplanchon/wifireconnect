@@ -1,7 +1,15 @@
 # wifireconnect
 
+![wifireconnect banner](https://raw.githubusercontent.com/carlosplanchon/wifireconnect/master/assets/banner.jpg)
+
 *A small Linux network watchdog that diagnoses connectivity failures and
 recovers Wi-Fi connections through [iwd](https://iwd.wiki.kernel.org/).*
+
+[![CI](https://github.com/carlosplanchon/wifireconnect/actions/workflows/ci.yml/badge.svg)](https://github.com/carlosplanchon/wifireconnect/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/wifireconnect.svg)](https://pypi.org/project/wifireconnect/)
+[![Python versions](https://img.shields.io/pypi/pyversions/wifireconnect.svg)](https://pypi.org/project/wifireconnect/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/carlosplanchon/wifireconnect)
 
 > **Linux + iwd only.** Observation comes from
 > [ifpeek](https://github.com/carlosplanchon/ifpeek) (netlink / nl80211);
