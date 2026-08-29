@@ -1,0 +1,24 @@
+# wifireconnect: Wi-Fi watchdog, recovers connectivity through iwd.
+#
+# Adjust ExecStart to where the entry point lives (e.g. a uv tool install,
+# a venv, or pipx) and to your interface. The service does not need root:
+# it only needs to be allowed on iwd's D-Bus, which iwd grants to root and
+# to the wheel and network groups.
+
+[Unit]
+Description=Wi-Fi watchdog (diagnose and recover through iwd)
+After=network.target iwd.service
+Wants=iwd.service
+
+[Service]
+Type=exec
+ExecStart=/usr/local/bin/wifireconnect run --interface wlan0
+Restart=on-failure
+RestartSec=10
+
+# To run unprivileged, use a dedicated user in the network group:
+# User=wifireconnect
+# SupplementaryGroups=network
+
+[Install]
+WantedBy=multi-user.target

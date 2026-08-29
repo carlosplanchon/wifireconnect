@@ -1,0 +1,69 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build & validate
+    runs-on: ubuntu-latest
+    env:
+      UV_PYTHON: "3.14"  # pin every uv command (run/build) to Python 3.14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Verify tag matches package version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(uv version --short)"
+          echo "tag=$TAG package=$PKG"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::Tag v$TAG does not match pyproject version $PKG. Bump the version or fix the tag."
+            exit 1
+          fi
+
+      - name: Run tests
+        run: uv run --extra dev pytest
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Check package metadata
+        run: uvx twine check dist/*
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+
+  publish:
+    name: publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    # Trusted Publishing scope: the PyPI publisher must reference this
+    # environment name. No API tokens/secrets required.
+    environment:
+      name: pypi
+      url: https://pypi.org/project/wifireconnect/
+    permissions:
+      id-token: write  # mint the OIDC token PyPI verifies
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

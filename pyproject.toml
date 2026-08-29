@@ -4,21 +4,23 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wifireconnect"
-version = "0.2.0"
-description = "Python module to test and ensure connectivity on a network which have stability problems on its wifi. Run on Ubuntu / Debian."
+version = "1.0.0"
+description = "A small Linux network watchdog that diagnoses connectivity failures and recovers Wi-Fi connections through iwd."
 readme = "README.md"
 authors = [
     {name = "Carlos A. Planchón", email = "bubbledoloresuruguay2@gmail.com"}
 ]
 
-
 license = "MIT"
 license-files = ["LICENSE"]
 
-keywords = ["wifi", "connectivity", "networking"]
+keywords = ["wifi", "watchdog", "iwd", "netlink", "connectivity", "reconnect", "linux"]
 classifiers = [
     "Intended Audience :: Developers",
-    "Topic :: Software Development :: Build Tools",
+    "Intended Audience :: System Administrators",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: System :: Networking",
+    "Topic :: System :: Networking :: Monitoring",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -28,7 +30,8 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "pingparsing",
+    "ifpeek>=1.1.0",
+    "jeepney>=0.8",
     "typer"
 ]
 
@@ -38,6 +41,22 @@ Repository = "https://github.com/carlosplanchon/wifireconnect"
 [project.scripts]
 wifireconnect = "wifireconnect.__main__:main"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["wifireconnect*"]
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.1",
+    "pytest-cov>=7.1",
+]
+
+[tool.setuptools]
+packages = ["wifireconnect"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--verbose",
+    "--cov=wifireconnect",
+    "--cov-report=term-missing",
+]
