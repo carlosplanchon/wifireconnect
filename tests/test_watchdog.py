@@ -91,6 +91,50 @@ class TestHysteresis:
         assert ("connect", "wlan0", "Forced") in backend.actions()
 
 
+class TestStreakSemantics:
+    """ The threshold means "N checks in a row blaming the association",
+    so non-recoverable failures must not feed or survive in the streak. """
+
+    def test_upstream_failures_do_not_feed_the_streak(self, monkeypatch):
+        # Two upstream failures plus one zombie reading must not trigger
+        # recovery on a single association-blaming observation.
+        backend = _Iwd(state="connected").install(monkeypatch)
+        _feed(monkeypatch, [
+            _diag(Fault.UPSTREAM), _diag(Fault.UPSTREAM),
+            _diag(Fault.ZOMBIE, gateway="192.168.1.1"),
+        ])
+        dog = Watchdog(interface="wlan0", failures_before_recovery=3)
+        for _ in range(3):
+            dog.check()
+        assert backend.actions() == []
+
+    def test_a_non_recoverable_check_resets_the_streak(self, monkeypatch):
+        backend = _Iwd().install(monkeypatch)
+        _feed(monkeypatch, [
+            _diag(Fault.NOT_ASSOCIATED), _diag(Fault.NOT_ASSOCIATED),
+            _diag(Fault.UPSTREAM),
+            _diag(Fault.NOT_ASSOCIATED), _diag(Fault.NOT_ASSOCIATED),
+        ])
+        dog = Watchdog(interface="wlan0", failures_before_recovery=3)
+        for _ in range(5):
+            dog.check()
+        assert backend.actions() == []  # never 3 recoverable in a row
+
+    def test_mixed_recoverable_faults_share_the_streak(self, monkeypatch):
+        # NOT_ASSOCIATED and ZOMBIE both blame the association, so they
+        # count towards the same streak.
+        backend = _Iwd(state="connected").install(monkeypatch)
+        _feed(monkeypatch, [
+            _diag(Fault.ZOMBIE, gateway="192.168.1.1"),
+            _diag(Fault.NOT_ASSOCIATED),
+            _diag(Fault.ZOMBIE, gateway="192.168.1.1"),
+        ])
+        dog = Watchdog(interface="wlan0", failures_before_recovery=3)
+        for _ in range(3):
+            dog.check()
+        assert ("connect", "wlan0", None) in backend.actions()
+
+
 class TestNonRecoverableFaults:
     def test_upstream_never_triggers_recovery(self, monkeypatch):
         backend = _Iwd().install(monkeypatch)

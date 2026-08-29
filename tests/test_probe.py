@@ -39,6 +39,29 @@ class TestTcpProbe:
         assert probe.tcp_probe("10.0.0.1", 443) is probe.ProbeResult.UNREACHABLE
 
 
+class TestGatewayProbe:
+    def test_a_gateway_dropping_dns_but_serving_https_is_alive(
+            self, monkeypatch):
+        def per_port(host, port, timeout=None):
+            if port == 443:
+                return probe.ProbeResult.OK
+            return probe.ProbeResult.UNREACHABLE
+
+        monkeypatch.setattr(probe, "tcp_probe", per_port)
+        assert probe.gateway_is_alive("192.168.1.1") is True
+
+    def test_silence_on_every_port_is_dead(self, monkeypatch):
+        attempts = []
+
+        def silent(host, port, timeout=None):
+            attempts.append(port)
+            return probe.ProbeResult.UNREACHABLE
+
+        monkeypatch.setattr(probe, "tcp_probe", silent)
+        assert probe.gateway_is_alive("192.168.1.1") is False
+        assert attempts == list(probe.GATEWAY_PROBE_PORTS)
+
+
 class TestInternetReachability:
     def test_a_later_target_saves_the_check(self, monkeypatch):
         results = {

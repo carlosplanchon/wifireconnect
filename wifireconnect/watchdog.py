@@ -9,7 +9,10 @@ Design rules:
 - Hybrid trigger: netlink events (via ``ifpeek.watch``) fire an immediate
   check, and a heartbeat covers the failures that produce no local event
   (upstream outage, zombie association).
-- Hysteresis: N consecutive failed checks are required before acting.
+- Hysteresis: N consecutive checks blaming the association (a recoverable
+  fault) are required before acting. A healthy or non-recoverable check
+  breaks the streak, so upstream outages never accumulate credit towards
+  a kick.
 - Cooldown: after acting, checks are suppressed for a while. This also
   swallows the netlink event storm the recovery itself produces.
 - Never fight iwd: if the station is "connecting" or "roaming", iwd is
@@ -56,6 +59,7 @@ class Watchdog:
     dry_run: bool = False
 
     _failures: int = field(default=0, init=False)
+    _last_fault: Optional[Fault] = field(default=None, init=False)
     _cooldown_until: float = field(default=0.0, init=False)
     _last_good_ssid: Optional[str] = field(default=None, init=False)
 
@@ -88,13 +92,27 @@ class Watchdog:
         return diagnosis
 
     def _handle(self, diagnosis: Diagnosis) -> None:
+        previous, self._last_fault = self._last_fault, diagnosis.fault
+
         if diagnosis.fault is Fault.HEALTHY:
-            if self._failures:
-                log.info("healthy again after %d failed checks", self._failures)
+            if previous is not None and previous is not Fault.HEALTHY:
+                log.info("healthy again (was %s)", previous.value)
             self._failures = 0
             if diagnosis.essid is not None:
                 self._last_good_ssid = diagnosis.essid
             log.debug("healthy: %s", diagnosis.detail)
+            return
+
+        if diagnosis.fault not in RECOVERABLE_FAULTS:
+            # Not the association's fault: observe only, and break the
+            # streak so the threshold keeps meaning "N checks in a row
+            # blaming the association".
+            self._failures = 0
+            log.warning(
+                "check failed: %s: %s (not recoverable by resetting the "
+                "association, observing only)",
+                diagnosis.fault.value, diagnosis.detail,
+            )
             return
 
         self._failures += 1
@@ -103,15 +121,8 @@ class Watchdog:
             self._failures, self.failures_before_recovery,
             diagnosis.fault.value, diagnosis.detail,
         )
-        if diagnosis.fault not in RECOVERABLE_FAULTS:
-            log.info(
-                "%s is not recoverable by resetting the association: "
-                "observing only", diagnosis.fault.value,
-            )
-            return
-        if self._failures < self.failures_before_recovery:
-            return
-        self._recover(diagnosis)
+        if self._failures >= self.failures_before_recovery:
+            self._recover(diagnosis)
 
     def _recover(self, diagnosis: Diagnosis) -> None:
         target = self.ssid or self._last_good_ssid

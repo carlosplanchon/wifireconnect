@@ -66,7 +66,8 @@ def run(
         help="Seconds between health checks when no event arrives."),
     failures: int = typer.Option(
         DEFAULT_FAILURES, "--failures", "-f",
-        help="Consecutive failed checks required before recovering."),
+        help="Consecutive recoverable failures required before "
+        "recovering (healthy or non-recoverable checks reset the count)."),
     cooldown: float = typer.Option(
         DEFAULT_COOLDOWN, "--cooldown", "-c",
         help="Seconds to hold off after a recovery attempt."),

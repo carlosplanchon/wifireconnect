@@ -42,7 +42,9 @@ healthy association because the ISP is down only adds flapping.
 
 Recovery is hardened against flapping and against fighting iwd:
 
-- N consecutive failed checks are required before acting (default 3).
+- N consecutive checks blaming the association are required before acting
+  (default 3); healthy or non-recoverable checks break the streak, so an
+  upstream outage never accumulates credit towards a kick.
 - After acting, a cooldown suppresses further checks (default 60 s), which
   also swallows the netlink event storm the recovery itself produces.
 - If iwd is already `connecting` or `roaming`, the watchdog waits.

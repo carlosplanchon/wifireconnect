@@ -19,9 +19,10 @@ DEFAULT_TIMEOUT = 3.0
 # Anycast resolvers with a public TCP service: no DNS needed to reach them.
 DEFAULT_INTERNET_TARGETS = (("1.1.1.1", 443), ("8.8.8.8", 443))
 
-# The most commonly open TCP port on home gateways (DNS). A refusal from a
-# closed port proves the gateway is alive just as well as an open one.
-GATEWAY_PROBE_PORT = 53
+# TCP ports commonly answered by home gateways (DNS, web admin). A refusal
+# from a closed port proves the gateway is alive just as well as an open
+# one; only silence on every port counts as dead.
+GATEWAY_PROBE_PORTS = (53, 80, 443)
 
 
 class ProbeResult(Enum):
@@ -81,15 +82,19 @@ def internet_is_reachable(
 
 def gateway_is_alive(gateway: str, timeout: float = DEFAULT_TIMEOUT) -> bool:
     """
-    Probe the default gateway. With a healthy local stack, a gateway that
-    does not answer at all points at a dead (zombie) association; a gateway
-    that answers while the internet does not points upstream.
+    Probe the default gateway on a few commonly answered ports (53, 80,
+    443). With a healthy local stack, a gateway that answers nothing at all
+    points at a dead (zombie) association; a gateway that answers while the
+    internet does not points upstream.
 
-    Caveat: a gateway that silently drops probes to closed ports looks dead
-    to this check.
+    Caveat: a gateway that silently drops all of these probes still looks
+    dead to this check.
 
     :param gateway: str: Gateway IP address.
-    :param timeout: float: Seconds to wait for an answer.
+    :param timeout: float: Seconds to wait for each answer.
 
     """
-    return host_is_alive(gateway, GATEWAY_PROBE_PORT, timeout=timeout)
+    return any(
+        host_is_alive(gateway, port, timeout=timeout)
+        for port in GATEWAY_PROBE_PORTS
+    )
