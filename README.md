@@ -13,8 +13,8 @@ recovers Wi-Fi connections through [iwd](https://iwd.wiki.kernel.org/).*
 
 > **Linux + iwd only.** Observation comes from
 > [ifpeek](https://github.com/carlosplanchon/ifpeek) (netlink / nl80211);
-> recovery talks to iwd over D-Bus (jeepney). No root, no subprocesses,
-> no passwords.
+> recovery talks to iwd over D-Bus (jeepney). No root needed, no
+> subprocesses, no passwords.
 
 ## How it works
 
@@ -65,10 +65,16 @@ network seen healthy, else to iwd's strongest known network in sight.
 ## Requirements
 
 - Linux with [iwd](https://iwd.wiki.kernel.org/) managing the Wi-Fi.
-- Permission to talk to iwd on the system D-Bus: run as root or belong to
-  the `wheel` or `network` group (see iwd's D-Bus policy).
+- Permission to talk to iwd on the system D-Bus: belong to the `wheel` or
+  `network` group (see iwd's D-Bus policy), or run as root.
 
 ## Installation
+
+```bash
+uv tool install wifireconnect   # recommended: isolated CLI on your PATH
+```
+
+To use it [as a library](#as-a-library), add it as a dependency instead:
 
 ```bash
 uv add wifireconnect
