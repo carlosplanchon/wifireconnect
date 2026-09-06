@@ -110,6 +110,17 @@ class TestConnect:
             iwd.connect("wlan0")
 
 
+class TestKnownNetworksInSight:
+    def test_lists_known_networks_strongest_first(self, monkeypatch):
+        _patch(monkeypatch)
+        assert iwd.known_networks_in_sight("wlan0") == ["Rupia-5GHz"]  # Stranger is unknown
+
+    def test_missing_interface_raises(self, monkeypatch):
+        _patch(monkeypatch)
+        with pytest.raises(iwd.IwdError):
+            iwd.known_networks_in_sight("wlan9")
+
+
 class TestDisconnect:
     def test_disconnects_the_right_station(self, monkeypatch):
         _patch(monkeypatch)

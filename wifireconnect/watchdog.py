@@ -21,13 +21,22 @@ Design rules:
   or the routing setup, and resetting the association does not own them).
 - The target network is remembered while healthy (last known good SSID),
   because once the link is down ifpeek cannot tell you what it was.
+- Look before touching: recovery starts with a fresh scan (ifpeek asks iwd
+  to scan). If the target is not in sight, nothing is done; a zombie
+  association is still an association, and dropping it to reconnect to a
+  network that is gone leaves you with nothing. Optionally, a target that is
+  in sight but too weak is left alone too (``min_signal_dbm``).
+- Say what the radio sees: recoverable failures log the associated BSS
+  (BSSID, frequency, dBm; cheap nl80211 reads, no scan) and recovery logs
+  the target's strongest BSS, so a log tells a channel change or a weak
+  link from a stuck association.
 """
 
 import logging
 
 from dataclasses import dataclass, field
 from time import monotonic
-from typing import Optional
+from typing import NamedTuple, Optional
 
 import ifpeek
 
@@ -45,6 +54,23 @@ DEFAULT_FAILURES = 3
 DEFAULT_COOLDOWN = 60.0
 
 
+class Sight(NamedTuple):
+    """ What a fresh scan said about the recovery target. """
+    scanned: bool                              # False: no scan, nothing is known
+    access_point: Optional[ifpeek.AccessPoint]  # the target's strongest BSS, or None
+
+
+def _describe(access_point: Optional[ifpeek.AccessPoint]) -> str:
+    """ 'bssid aa:bb:cc:dd:ee:ff, 5180 MHz, -47 dBm' with '?' for unknowns. """
+    if access_point is None:
+        return "no access point"
+    frequency = (
+        f"{access_point.frequency} MHz" if access_point.frequency is not None else "? MHz")
+    signal = (
+        f"{access_point.signal_dbm} dBm" if access_point.signal_dbm is not None else "? dBm")
+    return f"bssid {access_point.bssid or '?'}, {frequency}, {signal}"
+
+
 @dataclass
 class Watchdog:
     """ A connectivity watchdog for one Wi-Fi interface. """
@@ -57,6 +83,7 @@ class Watchdog:
     probe_timeout: float = probe.DEFAULT_TIMEOUT
     targets: tuple = probe.DEFAULT_INTERNET_TARGETS
     dry_run: bool = False
+    min_signal_dbm: Optional[int] = None  # leave a target weaker than this alone; None = off
 
     _failures: int = field(default=0, init=False)
     _last_fault: Optional[Fault] = field(default=None, init=False)
@@ -117,12 +144,55 @@ class Watchdog:
 
         self._failures += 1
         log.warning(
-            "check failed (%d/%d): %s: %s",
+            "check failed (%d/%d): %s: %s; link: %s",
             self._failures, self.failures_before_recovery,
-            diagnosis.fault.value, diagnosis.detail,
+            diagnosis.fault.value, diagnosis.detail, self._link(),
         )
         if self._failures >= self.failures_before_recovery:
             self._recover(diagnosis)
+
+    def _link(self) -> str:
+        """ The associated BSS as nl80211 sees it right now (no scan). """
+        try:
+            bssid = ifpeek.access_point_mac_address(self.interface)
+            if bssid is None:
+                return "not associated"
+            return _describe(ifpeek.AccessPoint(
+                ssid="", bssid=bssid,
+                frequency=ifpeek.access_point_frequency(self.interface),
+                signal_dbm=ifpeek.access_point_signal_dbm(self.interface),
+                signal_percent=0, security="", connected=True,
+            ))
+        except Exception as error:
+            return f"unknown ({error})"
+
+    def _look_for(self, target: Optional[str]) -> Sight:
+        """ Ask for a fresh scan and find the target's strongest BSS, or the
+        strongest BSS of any network iwd knows when there is no target. """
+        try:
+            access_points = ifpeek.scan_access_points(self.interface, fresh=True)
+        except Exception as error:
+            log.warning(
+                "fresh scan on %s failed (%s), recovering without looking",
+                self.interface, error,
+            )
+            return Sight(False, None)
+        if target is None:
+            try:
+                wanted = set(iwd.known_networks_in_sight(self.interface))
+            except Exception as error:
+                log.warning(
+                    "could not list iwd's known networks (%s), recovering "
+                    "without looking", error,
+                )
+                return Sight(False, None)
+        else:
+            wanted = {target}
+        # ifpeek returns the strongest signal first.
+        for access_point in access_points:
+            if access_point.ssid in wanted:
+                return Sight(True, access_point)
+        return Sight(True, None)
 
     def _recover(self, diagnosis: Diagnosis) -> None:
         target = self.ssid or self._last_good_ssid
@@ -135,6 +205,29 @@ class Watchdog:
                 self.interface, diagnosis.fault.value, target or "iwd's choice",
             )
             return
+
+        sight = self._look_for(target)
+        if sight.scanned:
+            wanted = target or "a known network"
+            if sight.access_point is None:
+                log.warning(
+                    "%s is not in sight of %s after a fresh scan: leaving the "
+                    "association alone", wanted, self.interface,
+                )
+                return
+            log.info(
+                "%s in sight of %s: %s", sight.access_point.ssid, self.interface,
+                _describe(sight.access_point),
+            )
+            signal = sight.access_point.signal_dbm
+            if (self.min_signal_dbm is not None and signal is not None
+                    and signal < self.min_signal_dbm):
+                log.warning(
+                    "%s is too weak (%d dBm < %d dBm) for a reconnect to help: "
+                    "leaving the association alone",
+                    sight.access_point.ssid, signal, self.min_signal_dbm,
+                )
+                return
 
         try:
             state = iwd.station_state(self.interface)

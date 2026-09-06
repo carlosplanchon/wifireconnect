@@ -56,6 +56,15 @@ Recovery is hardened against flapping and against fighting iwd:
 - After acting, a cooldown suppresses further checks (default 60 s), which
   also swallows the netlink event storm the recovery itself produces.
 - If iwd is already `connecting` or `roaming`, the watchdog waits.
+- Recovery looks before it touches: it asks iwd for a fresh scan (through
+  ifpeek, no root) and, if the target network is not in sight, does nothing.
+  A zombie association is still an association; dropping it to reconnect to
+  a network that is gone leaves you with nothing. With `--min-signal`, a
+  target that is in sight but weaker than the threshold is left alone too.
+- Recoverable failures log what the radio sees: the associated BSS (BSSID,
+  frequency, dBm) on every failed check, and the target's strongest BSS
+  before recovering, so the log tells a channel change or a weak link from
+  a stuck association.
 
 Reconnection goes to the network you name with `--ssid`, else to the last
 network seen healthy, else to iwd's strongest known network in sight.
@@ -104,6 +113,8 @@ Useful options for `run`:
 -f, --failures INT    Consecutive failures required before recovering. [default: 3]
 -c, --cooldown FLOAT  Seconds to hold off after a recovery attempt. [default: 60]
 -t, --timeout FLOAT   Seconds to wait for each probe answer. [default: 3]
+    --min-signal INT  Do not reconnect when the target is weaker than this many dBm
+                      after a fresh scan, e.g. --min-signal=-85. [default: off]
     --dry-run         Diagnose and log, but never touch the association.
 -v, --verbose         Debug output.
 ```

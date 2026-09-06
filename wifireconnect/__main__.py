@@ -74,6 +74,11 @@ def run(
     timeout: float = typer.Option(
         probe.DEFAULT_TIMEOUT, "--timeout", "-t",
         help="Seconds to wait for each probe answer."),
+    min_signal: Optional[int] = typer.Option(
+        None, "--min-signal",
+        help="Leave the association alone when the target's strongest access "
+        "point is weaker than this many dBm after a fresh scan (e.g. -85). "
+        "Off by default."),
     dry_run: bool = typer.Option(
         False, "--dry-run",
         help="Diagnose and log, but never touch the association."),
@@ -91,6 +96,7 @@ def run(
         cooldown=cooldown,
         probe_timeout=timeout,
         dry_run=dry_run,
+        min_signal_dbm=min_signal,
     )
     try:
         watchdog.run()

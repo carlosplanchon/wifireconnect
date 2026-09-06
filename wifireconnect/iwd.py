@@ -132,6 +132,29 @@ def station_state(interface: str) -> str:
         conn.close()
 
 
+def known_networks_in_sight(interface: str) -> list:
+    """
+    Names of the networks iwd knows (has credentials for) among those in
+    range of `interface`, strongest first. Reflects iwd's current view; ask
+    ifpeek for a fresh scan first if it matters.
+
+    :param interface: str: Wi-Fi interface name.
+
+    """
+    conn = _open()
+    try:
+        objects = _get_managed_objects(conn)
+        station_path = _find_station_path(objects, interface)
+        names = []
+        for network_path, _signal in _get_ordered_networks(conn, station_path):
+            network = objects.get(network_path, {}).get(f"{_IWD}.Network", {})
+            if _prop(network, "KnownNetwork") is not None:
+                names.append(_prop(network, "Name", "?"))
+        return names
+    finally:
+        conn.close()
+
+
 def disconnect(interface: str) -> None:
     """
     Drop the current association on `interface`.
