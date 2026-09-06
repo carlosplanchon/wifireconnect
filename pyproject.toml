@@ -30,7 +30,7 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "ifpeek>=1.1.0",
+    "ifpeek>=1.2.0",
     "jeepney>=0.8",
     "typer"
 ]
