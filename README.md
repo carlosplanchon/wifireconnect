@@ -156,6 +156,6 @@ Watchdog(interface="wlan0", dry_run=True).run()  # blocks
 ## Relation to ifpeek
 
 [`ifpeek`](https://github.com/carlosplanchon/ifpeek) observes (netlink,
-nl80211, read-only D-Bus); `wifireconnect` decides and acts (probes, iwd).
-ifpeek peeks and never touches; everything that sends traffic or mutates
-state lives here.
+nl80211, and the Wi-Fi daemon's D-Bus, asking it at most for a scan);
+`wifireconnect` decides and acts (probes, iwd). ifpeek peeks and never
+changes anything; everything that sends traffic or mutates state lives here.
