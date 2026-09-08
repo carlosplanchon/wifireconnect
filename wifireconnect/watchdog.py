@@ -30,6 +30,11 @@ Design rules:
   (BSSID, frequency, dBm; cheap nl80211 reads, no scan) and recovery logs
   the target's strongest BSS, so a log tells a channel change or a weak
   link from a stuck association.
+- Keep the story before the failure too: every healthy check samples the
+  associated BSS at DEBUG, and changes are reported at INFO (roaming to
+  another BSS, the signal dropping below ``weak_signal_dbm`` or recovering
+  above it plus a hysteresis), so a quiet log still shows how the link was
+  doing before it broke.
 """
 
 import logging
@@ -52,6 +57,8 @@ log = logging.getLogger("wifireconnect")
 DEFAULT_HEARTBEAT = 30.0
 DEFAULT_FAILURES = 3
 DEFAULT_COOLDOWN = 60.0
+DEFAULT_WEAK_SIGNAL = -75   # dBm: below this the link is reported as weak
+SIGNAL_HYSTERESIS = 5       # dB above the threshold before reporting it recovered
 
 
 class Sight(NamedTuple):
@@ -84,11 +91,14 @@ class Watchdog:
     targets: tuple = probe.DEFAULT_INTERNET_TARGETS
     dry_run: bool = False
     min_signal_dbm: Optional[int] = None  # leave a target weaker than this alone; None = off
+    weak_signal_dbm: int = DEFAULT_WEAK_SIGNAL  # report the healthy link as weak below this
 
     _failures: int = field(default=0, init=False)
     _last_fault: Optional[Fault] = field(default=None, init=False)
     _cooldown_until: float = field(default=0.0, init=False)
     _last_good_ssid: Optional[str] = field(default=None, init=False)
+    _last_bssid: Optional[str] = field(default=None, init=False)  # healthy-run tracking
+    _weak: bool = field(default=False, init=False)
 
     def run(self) -> None:
         """ Check now, then keep checking on every netlink event for the
@@ -122,13 +132,19 @@ class Watchdog:
         previous, self._last_fault = self._last_fault, diagnosis.fault
 
         if diagnosis.fault is Fault.HEALTHY:
+            sample, link = self._observe_link()
             if previous is not None and previous is not Fault.HEALTHY:
-                log.info("healthy again (was %s)", previous.value)
+                log.info("healthy again (was %s); link: %s", previous.value, link)
+            self._report_link_changes(sample)
             self._failures = 0
             if diagnosis.essid is not None:
                 self._last_good_ssid = diagnosis.essid
-            log.debug("healthy: %s", diagnosis.detail)
+            log.debug("healthy: %s; link: %s", diagnosis.detail, link)
             return
+
+        # Not healthy: the healthy-run link tracking starts over next time.
+        self._last_bssid = None
+        self._weak = False
 
         if diagnosis.fault not in RECOVERABLE_FAULTS:
             # Not the association's fault: observe only, and break the
@@ -151,20 +167,55 @@ class Watchdog:
         if self._failures >= self.failures_before_recovery:
             self._recover(diagnosis)
 
-    def _link(self) -> str:
-        """ The associated BSS as nl80211 sees it right now (no scan). """
+    def _sample_link(self) -> Optional[ifpeek.AccessPoint]:
+        """ The associated BSS as nl80211 sees it right now (no scan), or
+        None when not associated. Raises when nl80211 cannot be read. """
+        bssid = ifpeek.access_point_mac_address(self.interface)
+        if bssid is None:
+            return None
+        return ifpeek.AccessPoint(
+            ssid="", bssid=bssid,
+            frequency=ifpeek.access_point_frequency(self.interface),
+            signal_dbm=ifpeek.access_point_signal_dbm(self.interface),
+            signal_percent=0, security="", connected=True,
+        )
+
+    def _observe_link(self):
+        """ (sample, description): the associated BSS as nl80211 sees it right
+        now, and the same thing worded for a log line. The sample is None when
+        not associated or when nl80211 could not be read. """
         try:
-            bssid = ifpeek.access_point_mac_address(self.interface)
-            if bssid is None:
-                return "not associated"
-            return _describe(ifpeek.AccessPoint(
-                ssid="", bssid=bssid,
-                frequency=ifpeek.access_point_frequency(self.interface),
-                signal_dbm=ifpeek.access_point_signal_dbm(self.interface),
-                signal_percent=0, security="", connected=True,
-            ))
+            sample = self._sample_link()
         except Exception as error:
-            return f"unknown ({error})"
+            return None, f"unknown ({error})"
+        return sample, (_describe(sample) if sample is not None else "not associated")
+
+    def _link(self) -> str:
+        """ The associated BSS, described for a log line. """
+        return self._observe_link()[1]
+
+    def _report_link_changes(self, sample: Optional[ifpeek.AccessPoint]) -> None:
+        """ While healthy, say at INFO what changed since the previous healthy
+        check: another BSS, or the signal crossing the weak threshold (with
+        hysteresis on the way back). """
+        if sample is None:
+            return
+        if self._last_bssid is not None and sample.bssid != self._last_bssid:
+            log.info(
+                "roamed from bssid %s to %s", self._last_bssid, _describe(sample))
+        self._last_bssid = sample.bssid
+        signal = sample.signal_dbm
+        if signal is None:
+            return
+        if not self._weak and signal < self.weak_signal_dbm:
+            self._weak = True
+            log.info(
+                "signal dropped to %d dBm on bssid %s (below %d dBm)",
+                signal, sample.bssid, self.weak_signal_dbm,
+            )
+        elif self._weak and signal >= self.weak_signal_dbm + SIGNAL_HYSTERESIS:
+            self._weak = False
+            log.info("signal recovered to %d dBm on bssid %s", signal, sample.bssid)
 
     def _look_for(self, target: Optional[str]) -> Sight:
         """ Ask for a fresh scan and find the target's strongest BSS, or the

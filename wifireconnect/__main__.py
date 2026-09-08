@@ -18,6 +18,7 @@ from wifireconnect.diagnose import diagnose
 from wifireconnect.watchdog import DEFAULT_COOLDOWN
 from wifireconnect.watchdog import DEFAULT_FAILURES
 from wifireconnect.watchdog import DEFAULT_HEARTBEAT
+from wifireconnect.watchdog import DEFAULT_WEAK_SIGNAL
 from wifireconnect.watchdog import Watchdog
 from wifireconnect import probe
 
@@ -79,6 +80,10 @@ def run(
         help="Leave the association alone when the target's strongest access "
         "point is weaker than this many dBm after a fresh scan (e.g. -85). "
         "Off by default."),
+    weak_signal: int = typer.Option(
+        DEFAULT_WEAK_SIGNAL, "--weak-signal",
+        help="While healthy, report at INFO when the signal drops below this "
+        "many dBm, and when it recovers (e.g. --weak-signal=-80)."),
     dry_run: bool = typer.Option(
         False, "--dry-run",
         help="Diagnose and log, but never touch the association."),
@@ -97,6 +102,7 @@ def run(
         probe_timeout=timeout,
         dry_run=dry_run,
         min_signal_dbm=min_signal,
+        weak_signal_dbm=weak_signal,
     )
     try:
         watchdog.run()

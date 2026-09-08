@@ -65,6 +65,12 @@ Recovery is hardened against flapping and against fighting iwd:
   frequency, dBm) on every failed check, and the target's strongest BSS
   before recovering, so the log tells a channel change or a weak link from
   a stuck association.
+- The story before the failure is kept too. Every healthy check samples the
+  associated BSS (visible with `--verbose`), and changes are logged at INFO
+  without it: roaming to another BSS, and the signal dropping below
+  `--weak-signal` (default -75 dBm) or recovering above it by 5 dB. A quiet
+  `journalctl -u wifireconnect` still shows how the link was doing before
+  it broke.
 
 Reconnection goes to the network you name with `--ssid`, else to the last
 network seen healthy, else to iwd's strongest known network in sight.
@@ -115,6 +121,8 @@ Useful options for `run`:
 -t, --timeout FLOAT   Seconds to wait for each probe answer. [default: 3]
     --min-signal INT  Do not reconnect when the target is weaker than this many dBm
                       after a fresh scan, e.g. --min-signal=-85. [default: off]
+    --weak-signal INT While healthy, log when the signal drops below this many dBm
+                      and when it recovers, e.g. --weak-signal=-80. [default: -75]
     --dry-run         Diagnose and log, but never touch the association.
 -v, --verbose         Debug output.
 ```

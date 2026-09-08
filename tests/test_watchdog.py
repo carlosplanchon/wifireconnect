@@ -37,6 +37,9 @@ class _Iwd:
         self.in_sight = list(_IN_SIGHT) if in_sight is None else list(in_sight)
         self.known = ["SomeNet", "MyNet", "Forced"] if known is None else list(known)
         self.calls = []
+        # What the associated link reads as (while `state` is "connected").
+        self.bssid = "aa:bb:cc:dd:ee:ff"
+        self.signal = -47
 
     def install(self, monkeypatch):
         monkeypatch.setattr(mod.iwd, "station_state", self._station_state)
@@ -47,7 +50,7 @@ class _Iwd:
         # The associated BSS, as _link() reads it (no scan).
         monkeypatch.setattr(mod.ifpeek, "access_point_mac_address", self._mac)
         monkeypatch.setattr(mod.ifpeek, "access_point_frequency", lambda i: 5180)
-        monkeypatch.setattr(mod.ifpeek, "access_point_signal_dbm", lambda i: -47)
+        monkeypatch.setattr(mod.ifpeek, "access_point_signal_dbm", lambda i: self.signal)
         return self
 
     def actions(self):
@@ -71,7 +74,7 @@ class _Iwd:
 
     def _mac(self, interface):
         self.calls.append(("link", interface))
-        return "aa:bb:cc:dd:ee:ff" if self.state == "connected" else None
+        return self.bssid if self.state == "connected" else None
 
     def _disconnect(self, interface):
         self.calls.append(("disconnect", interface))
@@ -381,6 +384,105 @@ class TestLinkInLogs:
         _feed(monkeypatch, [_diag(Fault.UPSTREAM)])
         Watchdog(interface="wlan0").check()
         assert ("link", "wlan0") not in backend.calls
+
+
+class TestLinkTracking:
+    """ While healthy: one link sample per check at DEBUG, and INFO only for
+    roaming and the signal crossing the weak threshold (with hysteresis). """
+
+    def _healthy(self, monkeypatch, backend, steps, **kwargs):
+        """ Run one healthy check per (bssid, signal) step; return the log text. """
+        _feed(monkeypatch, [_diag(Fault.HEALTHY, essid="MyNet")] * len(steps))
+        dog = Watchdog(interface="wlan0", **kwargs)
+        for bssid, signal in steps:
+            backend.bssid, backend.signal = bssid, signal
+            dog.check()
+        return dog
+
+    def test_every_healthy_check_samples_the_link_at_debug(self, monkeypatch, caplog):
+        backend = _Iwd(state="connected").install(monkeypatch)
+        with caplog.at_level(logging.DEBUG, logger="wifireconnect"):
+            self._healthy(monkeypatch, backend, [("aa:bb:cc:dd:ee:ff", -47)] * 2)
+        debug = [r for r in caplog.records if r.levelno == logging.DEBUG]
+        assert [r.getMessage() for r in debug] == [
+            "healthy: detail; link: bssid aa:bb:cc:dd:ee:ff, 5180 MHz, -47 dBm"] * 2
+        assert not [r for r in caplog.records if r.levelno >= logging.INFO]  # nothing changed
+
+    def test_roaming_is_reported_once(self, monkeypatch, caplog):
+        backend = _Iwd(state="connected").install(monkeypatch)
+        with caplog.at_level(logging.INFO, logger="wifireconnect"):
+            self._healthy(monkeypatch, backend, [
+                ("aa:bb:cc:dd:ee:ff", -47), ("11:22:33:44:55:66", -50), ("11:22:33:44:55:66", -50),
+            ])
+        info = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO]
+        assert info == ["roamed from bssid aa:bb:cc:dd:ee:ff to bssid 11:22:33:44:55:66, 5180 MHz, -50 dBm"]
+
+    def test_signal_threshold_with_hysteresis(self, monkeypatch, caplog):
+        backend = _Iwd(state="connected").install(monkeypatch)
+        with caplog.at_level(logging.INFO, logger="wifireconnect"):
+            self._healthy(monkeypatch, backend, [
+                ("aa:bb:cc:dd:ee:ff", -47),
+                ("aa:bb:cc:dd:ee:ff", -80),   # below -75: dropped
+                ("aa:bb:cc:dd:ee:ff", -76),   # still weak, no repeat
+                ("aa:bb:cc:dd:ee:ff", -72),   # above -75 but not -70: still weak
+                ("aa:bb:cc:dd:ee:ff", -69),   # recovered
+                ("aa:bb:cc:dd:ee:ff", -90),   # dropped again
+            ])
+        info = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO]
+        assert info == [
+            "signal dropped to -80 dBm on bssid aa:bb:cc:dd:ee:ff (below -75 dBm)",
+            "signal recovered to -69 dBm on bssid aa:bb:cc:dd:ee:ff",
+            "signal dropped to -90 dBm on bssid aa:bb:cc:dd:ee:ff (below -75 dBm)",
+        ]
+
+    def test_custom_weak_threshold(self, monkeypatch, caplog):
+        backend = _Iwd(state="connected").install(monkeypatch)
+        with caplog.at_level(logging.INFO, logger="wifireconnect"):
+            self._healthy(monkeypatch, backend, [("aa:bb:cc:dd:ee:ff", -80), ("aa:bb:cc:dd:ee:ff", -86)],
+                          weak_signal_dbm=-85)
+        info = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO]
+        assert info == ["signal dropped to -86 dBm on bssid aa:bb:cc:dd:ee:ff (below -85 dBm)"]
+
+    def test_unknown_signal_is_not_judged(self, monkeypatch, caplog):
+        backend = _Iwd(state="connected").install(monkeypatch)
+        with caplog.at_level(logging.INFO, logger="wifireconnect"):
+            self._healthy(monkeypatch, backend, [("aa:bb:cc:dd:ee:ff", None)] * 2)
+        assert not [r for r in caplog.records if r.levelno == logging.INFO]
+
+    def test_not_associated_and_read_errors_while_healthy(self, monkeypatch, caplog):
+        backend = _Iwd(state="disconnected").install(monkeypatch)  # mac reads None
+        with caplog.at_level(logging.DEBUG, logger="wifireconnect"):
+            self._healthy(monkeypatch, backend, [(None, None)])
+        assert "healthy: detail; link: not associated" in caplog.text
+
+        def boom(interface):
+            raise OSError("nl80211 down")
+
+        monkeypatch.setattr(mod.ifpeek, "access_point_mac_address", boom)
+        with caplog.at_level(logging.DEBUG, logger="wifireconnect"):
+            self._healthy(monkeypatch, backend, [(None, None)])
+        assert "healthy: detail; link: unknown (nl80211 down)" in caplog.text
+        assert not [r for r in caplog.records if r.levelno == logging.INFO]
+
+    def test_tracking_restarts_after_a_failure(self, monkeypatch, caplog):
+        backend = _Iwd(state="connected").install(monkeypatch)
+        _feed(monkeypatch, [
+            _diag(Fault.HEALTHY, essid="MyNet"),
+            _diag(Fault.ZOMBIE, gateway="192.168.1.1"),
+            _diag(Fault.HEALTHY, essid="MyNet"),
+        ])
+        dog = Watchdog(interface="wlan0")
+        with caplog.at_level(logging.INFO, logger="wifireconnect"):
+            backend.bssid, backend.signal = "aa:bb:cc:dd:ee:ff", -80
+            dog.check()                       # healthy, weak
+            dog.check()                       # zombie: trackers reset
+            backend.bssid, backend.signal = "11:22:33:44:55:66", -80
+            dog.check()                       # healthy again on another BSS
+        info = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO]
+        assert "roamed" not in caplog.text    # a reconnection is not roaming
+        assert info[0].startswith("signal dropped to -80 dBm")
+        assert "healthy again (was zombie); link: bssid 11:22:33:44:55:66, 5180 MHz, -80 dBm" in info
+        assert info[-1].startswith("signal dropped to -80 dBm on bssid 11:22:33:44:55:66")
 
 
 class TestCooldown:

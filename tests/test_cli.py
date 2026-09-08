@@ -65,6 +65,7 @@ class TestRunCommand:
         assert created["ssid"] == "MyNet"
         assert created["dry_run"] is True
         assert created["min_signal_dbm"] is None  # off by default
+        assert created["weak_signal_dbm"] == -75
 
     def test_min_signal_option(self, monkeypatch):
         created = {}
@@ -78,9 +79,10 @@ class TestRunCommand:
 
         monkeypatch.setattr(mod, "Watchdog", FakeWatchdog)
         result = runner.invoke(
-            mod.app, ["run", "--interface", "wlan0", "--min-signal=-85"])
+            mod.app, ["run", "--interface", "wlan0", "--min-signal=-85", "--weak-signal=-80"])
         assert result.exit_code == 0
         assert created["min_signal_dbm"] == -85
+        assert created["weak_signal_dbm"] == -80
 
     def test_keyboard_interrupt_exits_cleanly(self, monkeypatch):
         class InterruptedWatchdog:
